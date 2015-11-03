@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -xe
+
+rootdir=$(cd $(dirname $0)/../../ && pwd)
+
+changelog_modified() { test "$(git diff --name-only debian/changelog)" = "debian/changelog"; }
+
+commit() {
+    changelog_modified || dch -i
+    version=v$(head -n1 debian/changelog | sed -e 's/[^(]*(\([^)]*\).*/\1/')
+    git commit -am "debian: release $version"
+    git tag -a $version -m "$version"
+}
+
+push() {
+    git push
+    git push --tags
+}
+
+upload_python() {
+    version=v$(head -n1 debian/changelog | sed -e 's/[^(]*(\([^)]*\).*/\1/')
+    (cd src/api/python && sed setup.py -i -e "s/\(    version='\)[^']*\('\)/\1${version}\2/" && python setup.py sdist upload -r yandex)
+}
+
+upload() {
+    debuild
+    debrelease -t search-precise
+    upload_python
+}
+
+if [ $# -eq 0 ]; then
+    set commit push upload
+fi
+
+cd $rootdir
+
+for i in "$@"; do
+    eval $i
+done
